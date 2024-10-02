@@ -1,4 +1,4 @@
-package divisiblecontainer;
+package divisiblepanel;
 
 import java.awt.Dimension;
 import javax.swing.JFrame;
