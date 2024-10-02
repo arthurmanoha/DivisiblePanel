@@ -1,4 +1,4 @@
-package divisiblecontainer;
+package divisiblepanel;
 
 import java.awt.BorderLayout;
 import java.awt.Color;
@@ -11,10 +11,13 @@ import java.awt.event.KeyEvent;
 import java.awt.event.MouseEvent;
 import java.awt.event.MouseListener;
 import java.awt.event.MouseMotionListener;
+import java.util.ArrayList;
 import java.util.Random;
 import javax.swing.AbstractAction;
 import javax.swing.JPanel;
 import javax.swing.JSplitPane;
+import static javax.swing.JSplitPane.HORIZONTAL_SPLIT;
+import static javax.swing.JSplitPane.VERTICAL_SPLIT;
 import javax.swing.KeyStroke;
 
 /**
@@ -24,9 +27,14 @@ import javax.swing.KeyStroke;
 public class DivisiblePanel extends JPanel implements MouseListener, MouseMotionListener, ComponentListener {
 
     private JSplitPane splitPane;
-    private JPanel subpanel1, subpanel2;
+    private DivisiblePanel subpanel1, subpanel2;
     private boolean isFinal;
     private Color color;
+
+    // The potential cut is displayed as a line.
+    private int mouseX, mouseY;
+    private int splitDirection;
+    protected boolean isSplitting;
 
     private int id;
     private static int NB_DIV_PANELS_CREATED = 0;
@@ -45,29 +53,62 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
         this.addMouseMotionListener(this);
         this.addComponentListener(this);
 
-        getInputMap().put(KeyStroke.getKeyStroke("S"), "split");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke("S"), "split");
         getActionMap().put("split",
                 new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                System.out.println("split.");
+                setSplitting(true);
+                repaint();
             }
         });
 
-        getInputMap().put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel_split");
+        getInputMap(WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "cancel_split");
         getActionMap().put("cancel_split",
                 new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                System.out.println("cancel_split.");
+                setSplitting(false);
+                repaint();
             }
+
         });
+    }
+
+    public DivisiblePanel(DivisiblePanel original) {
+        this();
+    }
+
+    public DivisiblePanel clone() {
+        return new DivisiblePanel(this);
+    }
+
+    private void setSplitting(boolean b) {
+        isSplitting = b;
+        if (!isFinal) {
+            subpanel1.setSplitting(b);
+            subpanel2.setSplitting(b);
+        }
+    }
+
+    public boolean isFinal() {
+        return isFinal;
     }
 
     @Override
     public void paintComponent(Graphics g) {
-        g.setColor(color);
-        g.fillRect(0, 0, g.getClipBounds().width, g.getClipBounds().height);
+
+        if (isSplitting) {
+
+            int w = g.getClipBounds().width;
+            int h = g.getClipBounds().height;
+            g.setColor(Color.black);
+            if (splitDirection == HORIZONTAL_SPLIT) {
+                g.drawLine(mouseX, 0, mouseX, h);
+            } else {
+                g.drawLine(0, mouseY, w, mouseY);
+            }
+        }
     }
 
     @Override
@@ -76,18 +117,37 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
 
     @Override
     public void mousePressed(MouseEvent e) {
-        System.out.println("Mouse pressed on divpanel " + id + " (" + e.getX() + ", " + e.getY() + ");");
-        split();
+
+        if (isSplitting) {
+            splitDirection = getSplitDirection(e.getX(), e.getY());
+            split(splitDirection);
+        }
     }
 
-    private void split() {
-        System.out.println("    do split.");
+    /**
+     *
+     * @param x x-coordinate of the mouse within the panel
+     * @param y y-coordinate of the mouse within the panel
+     * @return the direction of the split if it were made now
+     */
+    private int getSplitDirection(int x, int y) {
+
+        double ex = (double) x / this.getWidth();
+        double ey = (double) y / this.getHeight();
+        if (ex > ey && ex > 1 - ey || ex < ey && ex < 1 - ey) {
+            return VERTICAL_SPLIT;
+        } else {
+            return HORIZONTAL_SPLIT;
+        }
+    }
+
+    private void split(int direction) {
 
         // Do the actual split here.
-        subpanel1 = new DivisiblePanel();
-        subpanel2 = new DivisiblePanel();
+        subpanel1 = this.clone();
+        subpanel2 = this.clone();
 
-        splitPane = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT, true, subpanel1, subpanel2) {
+        splitPane = new JSplitPane(direction, true, subpanel1, subpanel2) {
             @Override
             protected void paintChildren(Graphics g) {
                 super.paintChildren(g);
@@ -100,7 +160,7 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
         add(splitPane);
         isFinal = false;
         revalidate();
-        splitPane.setDividerLocation(0.5);
+        splitPane.setDividerLocation(getWidth() / 2);
     }
 
     @Override
@@ -113,6 +173,9 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
 
     @Override
     public void mouseExited(MouseEvent e) {
+        mouseX = -1;
+        mouseY = -1;
+        repaint();
     }
 
     @Override
@@ -122,15 +185,14 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
     @Override
     public void mouseMoved(MouseEvent e) {
         // Show the potential separation line.
+        splitDirection = getSplitDirection(e.getX(), e.getY());
+        mouseX = e.getX();
+        mouseY = e.getY();
+        repaint();
     }
 
     @Override
     public void componentResized(ComponentEvent e) {
-        if (!isFinal) {
-            int w = this.getWidth();
-            int h = this.getHeight();
-            splitPane.setSize(w, h);
-        }
     }
 
     @Override
@@ -159,5 +221,16 @@ public class DivisiblePanel extends JPanel implements MouseListener, MouseMotion
             return Color.gray;
         }
         return Color.white;
+    }
+
+    public ArrayList<DivisiblePanel> getAllFinalSubPanels() {
+        ArrayList<DivisiblePanel> allPanels = new ArrayList<>();
+        if (this.isFinal) {
+            allPanels.add(this);
+        } else {
+            allPanels.addAll(subpanel1.getAllFinalSubPanels());
+            allPanels.addAll(subpanel2.getAllFinalSubPanels());
+        }
+        return allPanels;
     }
 }
